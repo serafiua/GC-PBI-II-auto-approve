@@ -306,7 +306,7 @@ class FasihWorker:
 
         self.log("Klik Login SSO BPS...")
         await page.click('a[href="/oauth2/authorization/ics"]')
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load")
         await self.jeda()
 
         self.log("Mengisi username...")
@@ -319,17 +319,17 @@ class FasihWorker:
 
         self.log("Klik Log In...")
         await page.click('#kc-login')
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load")
         await self.jeda()
 
         self.log("Klik link survei...")
         await page.click('a[href*="/survey-collection/general/8712a6fc-a996-4a8f-ad6f-56a278c19288"]')
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load")
         await self.jeda()
 
         self.log("Klik tab Data...")
         await page.click('a[href="/survey-collection/collect/8712a6fc-a996-4a8f-ad6f-56a278c19288"]')
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("load")
         await self.jeda()
 
         self.log("Klik tombol SUBMITTED BY Pencacah...")
@@ -445,37 +445,34 @@ class FasihWorker:
             self.log(f"  ❌ [{teks}] Error fase 1: {e}", "err")
             return "error:exception_fase1"
 
-    # ── Fase 2: Approve + Ya ──────────────────────────────────────────────────
+# ── Fase 2: Approve + Ya ──────────────────────────────────────────────────
     # Return: "approve" | "skip:<alasan>" | "error:<alasan>"
     async def fase2_approve(self, tab, teks):
         try:
+            # LANGSUNG TUNGGU TOMBOL APPROVE MUNCUL (Bukan nunggu h1 lagi)
+            tombol_approve = None
             for percobaan in range(1, 3):
                 try:
-                    await tab.wait_for_selector(
-                        "h1.tw\\:mb-1",
-                        timeout=self.config["timeout_h1"]
+                    tombol_approve = await tab.wait_for_selector(
+                        "#buttonApprove", 
+                        timeout=self.config["timeout_review"] # pakai timeout_review yg lebih masuk akal
                     )
                     break
                 except PlaywrightTimeout:
                     if percobaan == 1:
-                        self.log(f"  ⚠️ [{teks}] Halaman review belum load, refresh...", "warn")
+                        self.log(f"  ⚠️ [{teks}] Tombol Approve belum muncul, refresh halaman...", "warn")
                         await tab.reload(wait_until="domcontentloaded")
                         await self.jeda()
                     else:
-                        self.log(f"  ❌ [{teks}] Halaman review tidak load.", "err")
-                        return "error:halaman_tidak_load"
-
-            try:
-                tombol_approve = await tab.wait_for_selector("#buttonApprove", timeout=5_000)
-            except PlaywrightTimeout:
-                self.log(f"  ❌ [{teks}] Tombol Approve tidak ditemukan.", "err")
-                return "error:tombol_approve"
+                        self.log(f"  ❌ [{teks}] Tombol Approve tetap tidak ditemukan setelah reload.", "err")
+                        return "error:tombol_approve"
 
             await tab.bring_to_front()
             await self.jeda(0.8, 1.2)
             self.log(f"  [{teks}] Klik Approve...")
             await tombol_approve.click()
 
+            # Tunggu Dialog Konfirmasi 'Ya' muncul
             try:
                 tombol_ya = await tab.wait_for_selector(
                     "button.swal2-confirm",
@@ -490,6 +487,7 @@ class FasihWorker:
             self.log(f"  [{teks}] Klik Ya...")
             await tombol_ya.click()
 
+            # Tunggu respon popup hasil sukses/gagal
             try:
                 await tab.wait_for_selector(
                     "#swal2-html-container",
@@ -497,12 +495,12 @@ class FasihWorker:
                 )
                 teks_popup = (await tab.inner_text("#swal2-html-container")).strip().lower()
 
-                if "success" in teks_popup:
+                if "success" in teks_popup or "berhasil" in teks_popup:
                     self.log(
                         f"  ({self.counter_approve + 1}) ✅ [{teks}] Berhasil di-approve!", "ok"
                     )
                     return "approve"
-                elif "error" in teks_popup:
+                elif "error" in teks_popup or "gagal" in teks_popup:
                     self.log(f"  ⏭ [{teks}] Skip — server menolak approve (popup error).", "warn")
                     return "skip:popup_error"
                 else:
@@ -520,7 +518,7 @@ class FasihWorker:
         finally:
             await tab.close()
             self.log(f"  Tab [{teks}] ditutup.")
-
+            
     # ── Proses satu batch ─────────────────────────────────────────────────────
     async def proses_batch(self, context, batch, idx_batch, total_batch):
         self.log(f"\n  == Batch {idx_batch}/{total_batch}: {len(batch)} ID ==")
