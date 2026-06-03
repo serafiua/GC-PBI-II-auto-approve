@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
 from PySide6.QtGui import QFont, QIcon, QTextCursor, QPalette, QColor
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QSpinBox, QDoubleSpinBox,
+    QLabel, QLineEdit, QPushButton, QSpinBox,
     QTextEdit, QGroupBox, QGridLayout, QProgressBar, QFrame,
     QCheckBox, QSplitter, QStatusBar, QToolButton, QSizePolicy,
     QMessageBox
@@ -20,11 +20,6 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-
-# Ambil dari .env — gunakan key FASIH_USERNAME/FASIH_PASSWORD agar tidak
-# bentrok dengan env var sistem Windows (USERNAME = nama user Windows)
-_ENV_USER = os.getenv("FASIH_USERNAME")
-_ENV_PASS  = os.getenv("FASIH_PASSWORD")
 
 # ─── THEMES ──────────────────────────────────────────────────────────────────
 
@@ -248,7 +243,7 @@ QToolButton:hover { color: #4c4f69; }
 
 class WorkerSignals(QObject):
     log_message   = Signal(str, str)   # (pesan, tipe: info/ok/warn/err)
-    stat_update   = Signal(int, int, int)  # approve, skip, error
+    stat_update   = Signal(int, int)       # approve, skip
     progress      = Signal(int, int)   # current, total
     status_bar    = Signal(str)
     finished      = Signal()
@@ -265,7 +260,6 @@ class FasihWorker:
 
         self.counter_approve  = 0
         self.counter_skip     = 0
-        self.counter_error    = 0
 
         # Progress tracking: diupdate realtime per ID selesai
         self._progress_current = 0
@@ -287,12 +281,10 @@ class FasihWorker:
         """Catat outcome ID (approve/skip/error) dan emit stat + progress."""
         if outcome == "approve":
             self.counter_approve += 1
-        elif outcome == "skip":
+        elif outcome in ("skip", "error"):
             self.counter_skip += 1
-        elif outcome == "error":
-            self.counter_error += 1
         self.signals.stat_update.emit(
-            self.counter_approve, self.counter_skip, self.counter_error
+            self.counter_approve, self.counter_skip
         )
         # Progress naik +1 setiap ID selesai apapun hasilnya
         self._progress_current += 1
@@ -696,7 +688,7 @@ class RunnerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FASIH Auto Approve")
+        self.setWindowTitle("Auto Approve FASIH GC PBI Tahap II (v2.0.0)")
         self.setMinimumSize(900, 650)
         self.is_dark = True
         self.runner  = None
@@ -714,7 +706,7 @@ class MainWindow(QMainWindow):
 
         # ── Header ────────────────────────────────────────────────────────────
         header = QHBoxLayout()
-        title  = QLabel("🗳 FASIH Auto Approve")
+        title  = QLabel("🗳 Auto Approve FASIH GC PBI Tahap II")
         title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         header.addWidget(title)
         header.addStretch()
@@ -749,12 +741,12 @@ class MainWindow(QMainWindow):
         gl = QGridLayout(grp_login)
         gl.setColumnStretch(1, 1)
         gl.addWidget(QLabel("Username:"), 0, 0)
-        self.inp_user = QLineEdit(os.getenv("FASIH_USERNAME", ""))
-        self.inp_user.setPlaceholderText("NIP atau username SSO")
+        self.inp_user = QLineEdit()
+        self.inp_user.setPlaceholderText("username SSO BPS")
         gl.addWidget(self.inp_user, 0, 1)
 
         gl.addWidget(QLabel("Password:"), 1, 0)
-        self.inp_pass = QLineEdit(os.getenv("FASIH_PASSWORD", ""))
+        self.inp_pass = QLineEdit()
         self.inp_pass.setEchoMode(QLineEdit.EchoMode.Password)
         self.inp_pass.setPlaceholderText("••••••••")
         gl.addWidget(self.inp_pass, 1, 1)
@@ -773,56 +765,67 @@ class MainWindow(QMainWindow):
         gc = QGridLayout(grp_cfg)
         gc.setColumnStretch(1, 1)
 
-        gc.addWidget(QLabel("Batch size:"), 0, 0)
+        lbl_batch = QLabel("Batch size:")
+        gc.addWidget(lbl_batch, 0, 0)
+
+        batch_row = QHBoxLayout()
         self.spin_batch = QSpinBox()
         self.spin_batch.setRange(1, 20)
         self.spin_batch.setValue(5)
-        gc.addWidget(self.spin_batch, 0, 1)
+        batch_row.addWidget(self.spin_batch)
 
-        gc.addWidget(QLabel("Jeda min (s):"), 1, 0)
-        self.spin_jeda_min = QDoubleSpinBox()
-        self.spin_jeda_min.setRange(0.5, 10.0)
-        self.spin_jeda_min.setSingleStep(0.5)
-        self.spin_jeda_min.setValue(1.5)
-        gc.addWidget(self.spin_jeda_min, 1, 1)
+        btn_info = QPushButton("?")
+        btn_info.setFixedSize(20, 20)
+        btn_info.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_info.setStyleSheet(
+            "QPushButton {"
+            "  border-radius: 10px;"
+            "  border: 1px solid #6c7086;"
+            "  font-weight: bold;"
+            "  font-size: 11px;"
+            "  padding: 0px;"
+            "}"
+            "QPushButton:hover { border-color: #89b4fa; color: #89b4fa; }"
+        )
+        btn_info.clicked.connect(lambda: QMessageBox.information(
+            self, "Info Batch Size",
+            "Jumlah tab ID yang dibuka sekaligus dalam satu batch.\n\n"
+            "Nilai lebih besar → lebih cepat, tapi lebih berat di memori.\n"
+            "Nilai lebih kecil → lebih aman, cocok untuk koneksi lambat.\n\n"
+            "Disarankan: 3–5 untuk koneksi stabil."
+        ))
+        batch_row.addWidget(btn_info)
+        batch_row.addStretch()
 
-        gc.addWidget(QLabel("Jeda max (s):"), 2, 0)
-        self.spin_jeda_max = QDoubleSpinBox()
-        self.spin_jeda_max.setRange(0.5, 15.0)
-        self.spin_jeda_max.setSingleStep(0.5)
-        self.spin_jeda_max.setValue(3.0)
-        gc.addWidget(self.spin_jeda_max, 2, 1)
+        gc.addLayout(batch_row, 0, 1)
 
-        gc.addWidget(QLabel("Timeout Review (ms):"), 3, 0)
-        self.spin_t_review = QSpinBox()
-        self.spin_t_review.setRange(3000, 60000)
-        self.spin_t_review.setSingleStep(1000)
-        self.spin_t_review.setValue(10000)
-        gc.addWidget(self.spin_t_review, 3, 1)
+        headless_row = QHBoxLayout()
+        self.chk_headless = QCheckBox("Mode headless (browser invisible)")
+        headless_row.addWidget(self.chk_headless)
 
-        gc.addWidget(QLabel("Timeout H1 (ms):"), 4, 0)
-        self.spin_t_h1 = QSpinBox()
-        self.spin_t_h1.setRange(10000, 120000)
-        self.spin_t_h1.setSingleStep(5000)
-        self.spin_t_h1.setValue(60000)
-        gc.addWidget(self.spin_t_h1, 4, 1)
-
-        gc.addWidget(QLabel("Timeout Popup (ms):"), 5, 0)
-        self.spin_t_popup = QSpinBox()
-        self.spin_t_popup.setRange(5000, 60000)
-        self.spin_t_popup.setSingleStep(1000)
-        self.spin_t_popup.setValue(30000)
-        gc.addWidget(self.spin_t_popup, 5, 1)
-
-        gc.addWidget(QLabel("Timeout Tabel (ms):"), 6, 0)
-        self.spin_t_tabel = QSpinBox()
-        self.spin_t_tabel.setRange(5000, 60000)
-        self.spin_t_tabel.setSingleStep(1000)
-        self.spin_t_tabel.setValue(15000)
-        gc.addWidget(self.spin_t_tabel, 6, 1)
-
-        self.chk_headless = QCheckBox("Mode headless (tanpa browser)")
-        gc.addWidget(self.chk_headless, 7, 0, 1, 2)
+        btn_info_headless = QPushButton("?")
+        btn_info_headless.setFixedSize(20, 20)
+        btn_info_headless.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_info_headless.setStyleSheet(
+            "QPushButton {"
+            "  border-radius: 10px;"
+            "  border: 1px solid #6c7086;"
+            "  font-weight: bold;"
+            "  font-size: 11px;"
+            "  padding: 0px;"
+            "}"
+            "QPushButton:hover { border-color: #89b4fa; color: #89b4fa; }"
+        )
+        btn_info_headless.clicked.connect(lambda: QMessageBox.information(
+            self, "Info Mode Headless",
+            "Jika diaktifkan, browser tidak akan ditampilkan di layar.\n\n"
+            "Aktif → proses berjalan di background, lebih ringan.\n"
+            "Nonaktif → browser terlihat, cocok untuk memantau proses.\n\n"
+            "Disarankan: nonaktif dulu saat pertama kali mencoba. Jangan menutup browser yang muncul saat proses berjalan."
+        ))
+        headless_row.addWidget(btn_info_headless)
+        headless_row.addStretch()
+        gc.addLayout(headless_row, 1, 0, 1, 2)
         left_layout.addWidget(grp_cfg)
 
         # Tombol aksi
@@ -872,13 +875,11 @@ class MainWindow(QMainWindow):
             col.addWidget(lbl_txt)
             return col, lbl_val
 
-        col_ok,  self.lbl_approve = _stat_col("✅", "Approve", "approve")
-        col_skip, self.lbl_skip   = _stat_col("⏭",  "Skip",    "skip")
-        col_err,  self.lbl_error  = _stat_col("❌", "Error",   "error")
+        col_ok,  self.lbl_approve = _stat_col("✅", "ID yang di-approve", "approve")
+        col_skip, self.lbl_skip   = _stat_col("⏭",  "ID yang dilewati (sudah ter-approve/error)",    "skip")
 
         stat_row.addLayout(col_ok)
         stat_row.addLayout(col_skip)
-        stat_row.addLayout(col_err)
         right_layout.addWidget(grp_stat)
 
         # Progress bar
@@ -908,11 +909,9 @@ class MainWindow(QMainWindow):
         # Warna label statistik
         approve_color = "#a6e3a1" if self.is_dark else "#40a02b"
         skip_color    = "#f9e2af" if self.is_dark else "#df8e1d"
-        error_color   = "#f38ba8" if self.is_dark else "#d20f39"
 
         self.lbl_approve.setStyleSheet(f"color: {approve_color};")
         self.lbl_skip.setStyleSheet(f"color: {skip_color};")
-        self.lbl_error.setStyleSheet(f"color: {error_color};")
 
     def _toggle_theme(self):
         self.is_dark = not self.is_dark
@@ -947,16 +946,16 @@ class MainWindow(QMainWindow):
             return
 
         config = {
-            "username":      username,
-            "password":      password,
-            "batch_size":    self.spin_batch.value(),
-            "jeda_min":      self.spin_jeda_min.value(),
-            "jeda_max":      self.spin_jeda_max.value(),
-            "timeout_review": self.spin_t_review.value(),
-            "timeout_h1":    self.spin_t_h1.value(),
-            "timeout_popup": self.spin_t_popup.value(),
-            "timeout_tabel": self.spin_t_tabel.value(),
-            "headless":      self.chk_headless.isChecked(),
+            "username":       username,
+            "password":       password,
+            "batch_size":     self.spin_batch.value(),
+            "jeda_min":       1.5,
+            "jeda_max":       3.0,
+            "timeout_review": 10000,
+            "timeout_h1":     60000,
+            "timeout_popup":  30000,
+            "timeout_tabel":  15000,
+            "headless":       self.chk_headless.isChecked(),
         }
 
         signals = WorkerSignals()
@@ -986,7 +985,6 @@ class MainWindow(QMainWindow):
         self.progress.setFormat("Berjalan...")
         self.lbl_approve.setText("0")
         self.lbl_skip.setText("0")
-        self.lbl_error.setText("0")
 
     def _on_finished(self):
         self.btn_mulai.setEnabled(True)
@@ -995,10 +993,9 @@ class MainWindow(QMainWindow):
         self.progress.setFormat("Selesai")
         self.statusBar().showMessage("Proses selesai.")
 
-    def _update_stat(self, approve, skip, error):
+    def _update_stat(self, approve, skip):
         self.lbl_approve.setText(str(approve))
         self.lbl_skip.setText(str(skip))
-        self.lbl_error.setText(str(error))
 
     def _update_progress(self, current, total):
         if total == 0:
