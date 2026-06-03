@@ -293,46 +293,101 @@ class FasihWorker:
     # ── Login & navigasi ──────────────────────────────────────────────────────
     async def login_dan_navigasi(self, page):
         self.log("Membuka halaman utama...")
-        await page.goto("https://fasih-sm.bps.go.id", wait_until="domcontentloaded", timeout=60_000) #revisi
+        await page.goto("https://fasih-sm.bps.go.id", wait_until="domcontentloaded", timeout=60_000)
         await self.jeda()
 
+        # Tombol Login SSO BPS
         self.log("Klik Login SSO BPS...")
-        await page.click('a[href="/oauth2/authorization/ics"]')
-        await page.wait_for_load_state("load")
+        try:
+            await page.wait_for_selector('a[href="/oauth2/authorization/ics"]', timeout=10_000)
+            await page.click('a[href="/oauth2/authorization/ics"]')
+            await page.wait_for_load_state("load")
+        except PlaywrightTimeout:
+            raise Exception("Error: Tombol 'Login SSO BPS' tidak muncul. Halaman utama mungkin gagal dimuat.")
         await self.jeda()
 
+        # Field username
         self.log("Mengisi username...")
-        await page.fill('#username', self.config["username"])
+        try:
+            await page.wait_for_selector('#username', timeout=10_000)
+            await page.fill('#username', self.config["username"])
+        except PlaywrightTimeout:
+            raise Exception("Error: Field username tidak muncul. Halaman login SSO BPS gagal dimuat.")
         await self.jeda(0.8, 1.5)
 
+        # Field password
         self.log("Mengisi password...")
-        await page.fill('#password', self.config["password"])
+        try:
+            await page.wait_for_selector('#password', timeout=10_000)
+            await page.fill('#password', self.config["password"])
+        except PlaywrightTimeout:
+            raise Exception("Error: Field password tidak muncul.")
         await self.jeda(0.8, 1.5)
 
+        # Tombol Log In
         self.log("Klik Log In...")
-        await page.click('#kc-login')
-        await page.wait_for_load_state("load")
+        try:
+            await page.wait_for_selector('#kc-login', timeout=10_000)
+            await page.click('#kc-login')
+            await page.wait_for_load_state("load")
+        except PlaywrightTimeout:
+            raise Exception("Error: Tombol 'Log In' tidak muncul.")
         await self.jeda()
 
-        self.log("Klik link survei...")
-        await page.click('a[href*="/survey-collection/general/8712a6fc-a996-4a8f-ad6f-56a278c19288"]')
-        await page.wait_for_load_state("load")
+        # Cek apakah muncul pesan kredensial salah
+        try:
+            await page.wait_for_selector('.alert-error .kc-feedback-text', timeout=3_000)
+            raise Exception("Error: Kredensial salah. Periksa kembali username dan password.")
+        except PlaywrightTimeout:
+            pass  # Tidak ada pesan error, lanjut
+
+        # Link survei GC PBI
+        self.log("Klik link survei GC PBI Tahap II...")
+        try:
+            await page.wait_for_selector(
+                'a[href*="/survey-collection/general/8712a6fc-a996-4a8f-ad6f-56a278c19288"]',
+                timeout=15_000
+            )
+            await page.click('a[href*="/survey-collection/general/8712a6fc-a996-4a8f-ad6f-56a278c19288"]')
+            await page.wait_for_load_state("load")
+        except PlaywrightTimeout:
+            raise Exception("Error: Link survei GC PBI Tahap II tidak muncul. Pastikan akun memiliki akses ke survei ini.")
         await self.jeda()
 
+        # Tab Data
         self.log("Klik tab Data...")
-        await page.click('a[href="/survey-collection/collect/8712a6fc-a996-4a8f-ad6f-56a278c19288"]')
-        await page.wait_for_load_state("load")
+        try:
+            await page.wait_for_selector(
+                'a[href="/survey-collection/collect/8712a6fc-a996-4a8f-ad6f-56a278c19288"]',
+                timeout=10_000
+            )
+            await page.click('a[href="/survey-collection/collect/8712a6fc-a996-4a8f-ad6f-56a278c19288"]')
+            await page.wait_for_load_state("load")
+        except PlaywrightTimeout:
+            raise Exception("Error: Tab 'Data' tidak muncul di halaman survei.")
         await self.jeda()
 
+        # Tombol SUBMITTED BY Pencacah
         self.log("Klik tombol SUBMITTED BY Pencacah...")
-        await page.click('button.btn-outline-primary:has-text("SUBMITTED BY Pencacah")')
+        try:
+            await page.wait_for_selector(
+                'button.btn-outline-primary:has-text("SUBMITTED BY Pencacah")',
+                timeout=10_000
+            )
+            await page.click('button.btn-outline-primary:has-text("SUBMITTED BY Pencacah")')
+        except PlaywrightTimeout:
+            raise Exception("Error: Tombol 'SUBMITTED BY Pencacah' tidak muncul. Pastikan terdapat data berstatus SUBMITTED By Pencacah.")
         await self.jeda()
 
+        # Tabel daftar ID
         self.log("Menunggu tabel ID muncul...")
-        await page.wait_for_selector(
-            'td a[href*="assignment-detail"]',
-            timeout=self.config["timeout_tabel"]
-        )
+        try:
+            await page.wait_for_selector(
+                'td a[href*="assignment-detail"]',
+                timeout=self.config["timeout_tabel"]
+            )
+        except PlaywrightTimeout:
+            raise Exception("Error: Tabel daftar ID tidak muncul. Mungkin tidak ada data berstatus SUBMITTED saat ini.")
         await self.jeda()
         self.log("Login dan navigasi selesai.", "ok")
 
@@ -588,7 +643,7 @@ class FasihWorker:
             try:
                 await self.login_dan_navigasi(tab_list)
             except Exception as e:
-                self.log(f"❌ Gagal login: {e}", "err")
+                self.log(f"❌ {e}", "err")
                 await browser.close()
                 self.signals.finished.emit()
                 return
@@ -688,7 +743,7 @@ class RunnerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Auto Approve FASIH GC PBI Tahap II (v2.0.0)")
+        self.setWindowTitle("Auto Approve FASIH GC PBI Tahap II (v2.1.0)")
         self.setMinimumSize(900, 650)
         self.is_dark = True
         self.runner  = None
@@ -851,6 +906,20 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.btn_clear)
 
         left_layout.addStretch()
+
+        lbl_vpn = QLabel("⚠️  Pastikan FortiClient VPN sudah terhubung ke akun BPS sebelum menjalankan aplikasi ini.")
+        lbl_vpn.setWordWrap(True)
+        lbl_vpn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_vpn.setStyleSheet(
+            "background-color: #45350a;"
+            "color: #f9e2af;"
+            "border: 1px solid #f9e2af;"
+            "border-radius: 6px;"
+            "padding: 8px;"
+            "font-size: 11px;"
+        )
+        left_layout.addWidget(lbl_vpn)
+
         splitter.addWidget(left)
 
         # ── Panel kanan ───────────────────────────────────────────────────────
