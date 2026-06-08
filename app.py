@@ -876,7 +876,7 @@ class MainWindow(QMainWindow):
             "Jika diaktifkan, browser tidak akan ditampilkan di layar.\n\n"
             "Aktif → proses berjalan di background, lebih ringan.\n"
             "Nonaktif → browser terlihat, cocok untuk memantau proses.\n\n"
-            "Disarankan: nonaktif dulu saat pertama kali mencoba. Jangan menutup browser yang muncul saat proses berjalan."
+            "Disarankan: aktifkan dulu saat pertama kali mencoba. Jangan menutup browser yang muncul saat proses berjalan."
         ))
         headless_row.addWidget(btn_info_headless)
         headless_row.addStretch()
