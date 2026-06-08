@@ -743,7 +743,7 @@ class RunnerThread(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Auto Approve FASIH GC PBI Tahap II (v2.1.0)")
+        self.setWindowTitle("SATRIA PBI: Sistem Automasi Tinjau dan Approval PBI (v2.1.0)")
         self.setMinimumSize(900, 650)
         self.is_dark = True
         self.runner  = None
@@ -761,7 +761,7 @@ class MainWindow(QMainWindow):
 
         # ── Header ────────────────────────────────────────────────────────────
         header = QHBoxLayout()
-        title  = QLabel("🗳 Auto Approve FASIH GC PBI Tahap II")
+        title  = QLabel("🗳 SATRIA PBI: Sistem Automasi Tinjau dan Approval PBI")
         title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         header.addWidget(title)
         header.addStretch()
